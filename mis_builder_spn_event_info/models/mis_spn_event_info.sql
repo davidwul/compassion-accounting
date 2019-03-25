@@ -2,21 +2,25 @@ CREATE OR REPLACE VIEW mis_spn_event_info AS (
 select row_number() OVER (ORDER BY a.line_type,A.table_ID) as id,a.*
 from (
 select cec.id as table_id,
-	cec.type as line_type,
+	et.Name as line_type,
 	 1 as company_id,
 	    cec.name,
 	    cec.analytic_id as analytic_account_id,
-	    cec.start_date as date,ru.partner_id as user_id ,cec.partner_id,
-	    null as invoice_id,
+	    case
+		when et.Name='Muskathlon' then cec.hold_start_date - interval '2 month'
+		else cec.start_date end as date,
+		ru.partner_id as user_id ,cec.partner_id,
+	    null::integer as invoice_id,
 	    2832 as account_id,
 	    case
-		when cec.type='sport' and ath.lete >0 then ath.lete
+		when et.Name='Muskathlon' then ath.lete
 		else 1 end as debit,
 	    0 as credit,
 	    cec.id as event_id,
 	    cec.event_type_id
 	    from crm_event_compassion cec
 	    left join res_users ru on cec.user_id=ru.id
+	    left join event_type et on et.id=cec.event_type_id
 	    left join (
 		select cec.id,
 		case
@@ -32,6 +36,26 @@ select cec.id as table_id,
 		) reg on reg.event_id=cec.id
 		group by cec.id
 		having (count(distinct reg.reg)>0 or count(distinct p.partner_id)>0)) ath on ath.id=cec.id
+union all
+	select rc.id as table_id,
+	 'depart/cancel' as line_type,
+	 1 as company_id,
+	 rc.name,
+	 rco.analytic_id as analytic_account_id,
+	    rc.end_date as date,
+	    rc.user_id,
+	    rc.correspondent_id as partner_id,
+	    null::integer as invoice_id,
+	    2858 as account_id,
+	    0 as debit,
+	    1 as credit,
+	    rco.event_id,
+	    cec.event_type_id
+	    from recurring_contract rc
+	    left outer join recurring_contract_origin rco on rc.origin_id=rco.id
+	    left join crm_event_compassion cec on rco.event_id=cec.id
+	    where rc.end_date is not null
+	    and rc.type in ('SC','S')
 
 union all
 	select rc.id as table_id,
@@ -42,7 +66,7 @@ union all
 	 1 as company_id,
 	    rc.name,
 	    rco.analytic_id as analytic_account_id,
-	    rc.activation_date as date,rc.user_id,rc.correspondent_id as partner_id,0 as invoice_id,
+	    rc.activation_date as date,rc.user_id,rc.correspondent_id as partner_id,Null::integer as invoice_id,
 	    2858 as account_id,
 	    1 as debit,
 	    0 as credit,
@@ -52,26 +76,6 @@ union all
 	    left outer join recurring_contract_origin rco on rc.origin_id=rco.id
 	    left join crm_event_compassion cec on rco.event_id=cec.id
 	    where rc.activation_date is not null
-	    and rc.type in ('SC','S')
-union all
-	select rc.id as table_id,
-	 'depart/cancel' as line_type,
-	 1 as company_id,
-	 rc.name,
-	 rco.analytic_id as analytic_account_id,
-	    rc.end_date as date,
-	    rc.user_id,
-	    rc.correspondent_id as partner_id,
-	    0 as invoice_id,
-	    2858 as account_id,
-	    0 as debit,
-	    1 as credit,
-	    rco.event_id,
-	    cec.event_type_id
-	    from recurring_contract rc
-	    left outer join recurring_contract_origin rco on rc.origin_id=rco.id
-	    left join crm_event_compassion cec on rco.event_id=cec.id
-	    where rc.end_date is not null
 	    and rc.type in ('SC','S')
 union all
 
@@ -95,6 +99,6 @@ union all
 	    left outer join account_invoice ai on ai.id=aml.invoice_id
 	    left join crm_event_compassion cec on aaa.event_id=cec.id
 	    left join res_users ru on ai.user_id=ru.id
-	    where aa.code='4850' or aa.user_type_id=8 and ai.invoice_type not in ('sponsorship', 'gift')
+	    where aa.code='4850' or (aa.user_type_id=8 and ai.invoice_type not in ('sponsorship', 'gift'))
 ) a
     )
